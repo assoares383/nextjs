@@ -1,27 +1,65 @@
+import { GetStaticPaths, GetStaticProps } from 'next';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useState } from 'react';
-import dynamic from 'next/dynamic';
+import { client } from '@/lib/prismic';
+import Prismic from 'prismic-javascript';
+import PrismicDOM from 'prismic-dom';
+import { Document } from 'prismic-javascript/types/documents';
+interface ProductProps {
+  product: Document;
+}
 
-const AddToCartModal = dynamic(
-  () => import('@/components/AddToCartModal'),
-  { loading: () => <p>Loading...</p>, ssr: false }
-);
-
-export default function Product() {
+export default function Product({ product }: ProductProps) {
   const router = useRouter();
-  const [isAddToCartModalVisible, setIsAddToCartModalVisible] = useState(false);
 
-  function handleAddToCart() {
-    setIsAddToCartModalVisible(true);
+  if (router.isFallback) {
+    return <p>Carregando...</p>
   }
 
   return (
     <div>
-      <h1>{router.query.slug}</h1>
+      <h1>
+        {PrismicDOM.RichText.asText(product.data.title)}
+      </h1>
 
-      <button onClick={handleAddToCart}>Add to cart</button>
+      <img src={product.data.thumbnail.url} width="600" alt=""/>
 
-      {isAddToCartModalVisible && <AddToCartModal />}
+      <div dangerouslySetInnerHTML={{ 
+        __html: PrismicDOM.RichText.asText(product.data.title) }}>
+      </div>
+
+      <p>Price: ${product.data.price}</p>
     </div>
   );
+}
+
+export const getStaticPaths: GetStaticPaths = async () => {
+
+  const categories = await client().query([
+    Prismic.Predicates.at('document.type', 'category'),
+  ]);
+
+  const paths = categories.results.map(category => {
+    return {
+      params: {slug: category.uid}
+    }
+  })
+
+  return {
+    paths: [],
+    fallback: true,
+  }
+};
+
+export const getStaticProps: GetStaticProps<ProductProps> = async (context) => {
+  const { slug } = context.params;
+
+  const product = await client().getByUID('product', String(slug), {});
+
+  return {
+    props: {
+      product,
+    }, 
+    revalidate: 5,
+  }
 }
